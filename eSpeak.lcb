@@ -37,8 +37,91 @@ private variable mSynth as optional fs_SYNTH
 private variable mAudioDriver	as optional fs_AUIDIOdrvr
 private variable mPlayer as optional fs_PLAYER
 
-__safe foreign handler espeak_Initialize() returns fs_SETTINGS binds to "c:libespeak>espeak_Initialize"
+__safe foreign handler espeak_Synth( in pOutput as ZStringNative, in pSize as UIntSize, in pPosition as CUInt, in pPositionType as CUInt, in pEndPosition as CUInt, in pFlags as CUInt, in pID as optional CUInt, in pCustDataPtr as optional Pointer ) returns CSInt binds to "c:libespeak>espeak_Synth"
+
+-- espeak_ERROR espeak_Synth( const void *text,	size_t size, unsigned int position, espeak_POSITION_TYPE position_type,
+--	unsigned int end_position, unsigned int flags, unsigned int* unique_identifier, void* user_data);
+/* Synthesize speech for the specified text.  The speech sound data is passed to the calling
+   program in buffers by means of the callback function specified by espeak_SetSynthCallback().
+   The command is asynchronous: it is internally buffered and returns as soon as possible.
+   If espeak_Initialize was previously called with AUDIO_OUTPUT_PLAYBACK as argument, the sound data are played by eSpeak.
+
+   text: The text to be spoken, terminated by a zero character. It may be either 8-bit characters,
+      wide characters (wchar_t), or UTF8 encoding.  Which of these is determined by the "flags"
+      parameter.
+
+   size: Equal to (or greatrer than) the size of the text data, in bytes.  This is used in order
+      to allocate internal storage space for the text.  This value is not used for
+      AUDIO_OUTPUT_SYNCHRONOUS mode.
+
+   position:  The position in the text where speaking starts. Zero indicates speak from the
+      start of the text.
+
+   position_type:  Determines whether "position" is a number of characters, words, or sentences.
+      Values:
+
+   end_position:  If set, this gives a character position at which speaking will stop.  A value
+      of zero indicates no end position.
+
+   flags:  These may be OR'd together:
+      Type of character codes, one of:
+         espeakCHARS_UTF8     UTF8 encoding
+         espeakCHARS_8BIT     The 8 bit ISO-8859 character set for the particular language.
+         espeakCHARS_AUTO     8 bit or UTF8  (this is the default)
+         espeakCHARS_WCHAR    Wide characters (wchar_t)
+         espeakCHARS_16BIT    16 bit characters.
+
+      espeakSSML   Elements within < > are treated as SSML elements, or if not recognised are ignored.
+
+      espeakPHONEMES  Text within [[ ]] is treated as phonemes codes (in espeak's Hirshenbaum encoding).
+
+      espeakENDPAUSE  If set then a sentence pause is added at the end of the text.  If not set then
+         this pause is suppressed.
+
+   unique_identifier: This must be either NULL, or point to an integer variable to
+       which eSpeak writes a message identifier number.
+       eSpeak includes this number in espeak_EVENT messages which are the result of
+       this call of espeak_Synth().
+
+   user_data: a pointer (or NULL) which will be passed to the callback function in
+       espeak_EVENT messages.
+
+   Return: EE_OK: operation achieved
+           EE_BUFFER_FULL: the command can not be buffered;
+             you may try after a while to call the function again.
+	   EE_INTERNAL_ERROR.
+*/
+
+
+
+
+
+
+
+
+
+
+__safe foreign handler espeak_Initialize( in pOutput as ZStringNative, in pBufferLen as CUInt, in pVocDataPath as optional ZStringNative, in pOption as CUInt ) returns CUInt binds to "c:libespeak>espeak_Initialize"
+
 __safe foreign handler espeak_Info(inout rPathStrPtr as optional Pointer) returns Pointer binds to "c:libespeak>espeak_Info"
+
+-- ESPEAK_API int espeak_Initialize(espeak_AUDIO_OUTPUT output, int buflength, const char *path, int options);
+
+/* Must be called before any synthesis functions are called.
+   output: the audio data can either be played by eSpeak or passed back by the SynthCallback function.
+
+   buflength:  The length in mS of sound buffers passed to the SynthCallback function.
+            Value=0 gives a default of 200mS.
+            This paramater is only used for AUDIO_OUTPUT_RETRIEVAL and AUDIO_OUTPUT_SYNCHRONOUS modes.
+
+   path: The directory which contains the espeak-data directory, or NULL for the default location.
+
+   options: bit 0:  1=allow espeakEVENT_PHONEME events.
+            bit 1:  1= espeakEVENT_PHONEME events give IPA phoneme names, not eSpeak phoneme names
+            bit 15: 1=don't exit if espeak_data is not found (used for --help)
+
+   Returns: sample rate in Hz, or -1 (EE_INTERNAL_ERROR).
+*/
 
 
 __safe foreign handler fluid_settings_setnum(in pSettings as fs_SETTINGS, in pSettingName as ZStringNative, in pNumber as CDouble) returns CInt binds to "c:libespeak>fluid_settings_setnum"
@@ -164,6 +247,17 @@ __safe foreign handler MCWidgetGetMyScriptObject(out rObject as ScriptObject) re
 
 variable mScriptObject as ScriptObject
 
+constant espeakCHARS_AUTO is 0
+constant espeakCHARS_UTF8 is  1
+constant espeakCHARS_8BIT is  2
+constant espeakCHARS_WCHAR is 3
+constant espeakCHARS_16BIT is 4
+
+constant espeakSSML      is  16
+constant espeakPHONEMES  is  256
+constant espeakENDPAUSE  is  4096
+constant espeakKEEP_NAMEDATA is 8192
+
 /**
 Setup the eSpeak Engine
 
@@ -182,7 +276,9 @@ public handler speakEnsureInit() returns optional any
    variable tString as String
    variable tWasSet as CSInt
    variable tPathStrPtr as optional Pointer
-   variable tPathString as String
+   variable tPathString as ZStringNative
+   variable tSize as CUInt
+
 	--if mInited then
 	--	return mInited
    --	else
@@ -201,8 +297,32 @@ public handler speakEnsureInit() returns optional any
       if MCStringCreateWithCString(tPathStrPtr,tPathString) then
          log ["lib eSpeak voice data path:" && tPathString]
       end if
+
+      put espeak_Initialize("AUDIO_OUTPUT_PLAYBACK",0,nothing,0) into tWasSet
+      log tWasSet -- logs 22050, which is KHz sample rate
+      put "Hello eSpeak!" into tString
+
+      put 14 into tSize
+      -- POS_CHARACTER = 1, POS_WORD, POS_SENTENCE
+      -- put espeakCHARS_AUTO = 0 + espeakENDPAUSE = 4096 into tFlags
+      -- put espeak_Synth(tString,tSize,0,1,0,4096,nothing,nothing) into tWasSet -- crashes engine
+      -- log tWasSet
 end handler
 
-
+/**
+#include</usr/local/include/espeak/speak_lib.h>
+int main(int argc, char* argv[] )
+{
+char text[] = {"الله لطيف "};
+espeak_Initialize(AUDIO_OUTPUT_PLAYBACK, 0, NULL, 0 );
+espeak_SetVoiceByName("ar");
+unsigned int size = 0;
+while(text[size]!='\0') size++;
+unsigned int flags=espeakCHARS_AUTO | espeakENDPAUSE;
+espeak_Synth( text, size+1, 0,POS_CHARACTER,0, flags, NULL, NULL );
+espeak_Synchronize( );
+return 0;
+}`
+**/
 
 end library

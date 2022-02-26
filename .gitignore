@@ -11,3 +11,8 @@ code/x86_64-win32/.DS_Store
 resources/doc/.DS_Store
 resources/.DS_Store
 .DS_Store
+._eSpeak.lcb
+resources/._libespeak.a.zip
+resources/._ReadMe.txt
+resources/doc/._speak_lib.h
+samples/._Tester.livecode
