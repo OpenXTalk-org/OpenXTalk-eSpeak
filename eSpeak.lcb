@@ -1,0 +1,208 @@
+library org.openxtalk.library.espeak
+
+metadata version is "0.1"
+metadata author is "Paul McClernan"
+metadata title is "OpenXTalk.org Speak"
+metadata userVisible is "true" -- Show Widget in ... ?
+metadata _ide is "true" -- ? default load at startup
+
+use com.livecode.foreign
+use com.livecode.canvas
+use com.livecode.string
+use com.livecode.char
+use com.livecode.array
+use com.livecode.list
+use com.livecode.widget
+use com.livecode.engine
+use com.livecode.library.widgetutils
+use com.livecode.system
+
+private type fs_SETTINGS is Pointer
+private type fs_SYNTH is Pointer
+private type fs_AUIDIOdrvr is Pointer
+private type fs_PLAYER is Pointer
+private type fs_SOUNDFONT is Pointer
+private type fs_FILE_RENDERER is Pointer
+private type fs_MIDIROUTER is Pointer
+private type fs_MIDIROUTER_rule is Pointer
+private type fs_MIDIdrvr is Pointer
+private type fs_MIDIEvent is Pointer
+
+constant kFLUID_OK is 0
+constant kFLUID_FAILED is -1
+
+private variable mInited as Boolean
+private variable mSettings as optional fs_SETTINGS
+private variable mSynth as optional fs_SYNTH
+private variable mAudioDriver	as optional fs_AUIDIOdrvr
+private variable mPlayer as optional fs_PLAYER
+
+__safe foreign handler espeak_Initialize() returns fs_SETTINGS binds to "c:libespeak>espeak_Initialize"
+__safe foreign handler espeak_Info(inout rPathStrPtr as optional Pointer) returns Pointer binds to "c:libespeak>espeak_Info"
+
+
+__safe foreign handler fluid_settings_setnum(in pSettings as fs_SETTINGS, in pSettingName as ZStringNative, in pNumber as CDouble) returns CInt binds to "c:libespeak>fluid_settings_setnum"
+__safe foreign handler fluid_settings_getnum(in pSettings as fs_SETTINGS, in pSettingName as ZStringNative, out rNumber as CDouble) returns CInt binds to "c:libespeak>fluid_settings_getnum"
+__safe foreign handler fluid_settings_setint(in pSettings as fs_SETTINGS, in pSettingName as ZStringNative, in pNumber as CInt) returns CInt binds to "c:libespeak>fluid_settings_setint"
+__safe foreign handler fluid_settings_getint(in pSettings as fs_SETTINGS, in pSettingName as ZStringNative, out rNumber as CInt) returns CInt binds to "c:libespeak>fluid_settings_getint"
+__safe foreign handler fluid_settings_setstr(in pSettings as fs_SETTINGS, in pSettingName as ZStringNative, in pSettingString as ZStringNative) returns Cbool binds to "c:libespeak>fluid_settings_setstr"
+__safe foreign handler fluid_settings_getstr(in pSettings as fs_SETTINGS, in pSettingName as ZStringNative, out rSettingString as ZStringNative) returns CBool binds to "c:libespeak>fluid_settings_getstr"
+
+__safe foreign handler fluid_settings_getstr_default(in pSettings as fs_SETTINGS, in pSettingName as ZStringNative, out rSettingString as ZStringNative) returns CBool binds to "c:libespeak>fluid_settings_getstr_default"
+
+__safe foreign handler fluid_is_midifile(in pFilename as ZStringNative ) returns CBool binds to "c:libespeak>fluid_is_midifile"
+__safe foreign handler fluid_is_soundfont(in pFilename as ZStringNative ) returns CBool binds to "c:libespeak>fluid_is_soundfont"
+__safe foreign handler fluid_version(out rMaj as CInt, out rMin as CInt, out rMicr as CInt) returns nothing binds to "c:libespeak>fluid_version"
+__safe foreign handler fluid_version_str() returns Pointer binds to "c:libespeak>fluid_version_str"
+
+__safe foreign handler new_fluid_audio_driver(in pSettings as fs_SETTINGS,in pSynth as fs_SYNTH ) returns optional fs_AUIDIOdrvr binds to "c:libespeak>new_fluid_audio_driver"
+__safe foreign handler delete_fluid_audio_driver(in pDriver as fs_AUIDIOdrvr ) returns nothing binds to "c:libespeak>delete_fluid_audio_driver"
+
+__safe foreign handler new_fluid_synth(in pSettings as fs_SETTINGS) returns optional fs_SYNTH binds to "c:libespeak>new_fluid_synth"
+__safe foreign handler delete_fluid_synth(in pSynth as fs_SYNTH) returns CBool binds to "c:libespeak>delete_fluid_synth"
+__safe foreign handler fluid_synth_get_cpu_load(in pSynth as fs_SYNTH) returns CDouble binds to "c:libespeak>fluid_synth_get_cpu_load"
+__safe foreign handler fluid_synth_sfload(in pSynth as fs_SYNTH,in pFilename as ZStringNative,in pResetPresets as CBool) returns CSInt binds to "c:libespeak>fluid_synth_sfload"
+__safe foreign handler fluid_synth_add_sfont(in pSynth as fs_SYNTH, in pSoudFont as fs_SOUNDFONT ) returns CSInt binds to "c:libespeak>fluid_synth_add_sfont"
+__safe foreign handler fluid_synth_remove_sfont(in pSynth as fs_SYNTH,in pSoudFont as fs_SOUNDFONT ) returns CSInt binds to "c:libespeak>fluid_synth_remove_sfont"
+__safe foreign handler fluid_synth_sfunload(in pSynth as fs_SYNTH,in pSoudFont as fs_SOUNDFONT, in pReset as CInt) returns CSInt binds to "c:libespeak>fluid_synth_sfunload"
+__safe foreign handler fluid_synth_sfreload(in pSynth as fs_SYNTH,in pSoundFontId as Cint) returns CSInt binds to "c:libespeak>fluid_synth_sfreload"
+__safe foreign handler fluid_synth_get_sfont(in pSynth as fs_SYNTH, in pSFontIndexNum as CInt) returns optional fs_SOUNDFONT binds to "c:libespeak>fluid_synth_get_sfont" -- Index is 0 to _sfcount -1
+__safe foreign handler fluid_synth_get_sfont_by_id(in pSynth as fs_SYNTH, in pSFontID as CInt) returns optional fs_SOUNDFONT binds to "c:libespeak>fluid_synth_get_sfont_by_id"
+__safe foreign handler fluid_sfont_get_name(in pSoundFont as optional fs_SOUNDFONT) returns optional Pointer binds to "c:libespeak>fluid_sfont_get_name" -- pointer to *char string
+__safe foreign handler fluid_synth_sfcount(in pSynth as fs_SYNTH ) returns CInt binds to "c:libespeak>fluid_synth_sfcount"
+__safe foreign handler fluid_synth_system_reset(in pSynth as fs_SYNTH) returns CBool binds to "c:libespeak>fluid_synth_system_reset"
+__safe foreign handler fluid_synth_noteon(in pSynth as fs_SYNTH,in pChan as CInt,in pKey as CInt, in pVel as CInt ) returns CSInt binds to "c:libespeak>fluid_synth_noteon"
+__safe foreign handler fluid_synth_noteoff(in pSynth as fs_SYNTH,in pChan as CInt,in pKey as CInt ) returns CInt binds to "c:libespeak>fluid_synth_noteoff"
+__safe foreign handler fluid_synth_pitch_bend(in pSynth as fs_SYNTH,in pChan as CInt,in pBend as CInt ) returns CSInt binds to "c:libespeak>fluid_synth_pitch_bend" -- bend 0-16383, 8192 as center
+__safe foreign handler fluid_synth_cc(in pSynth as fs_SYNTH,in pChan as CInt,in pControllerNum as CInt, in pCCValue as CInt ) returns CSInt binds to "c:libespeak>fluid_synth_cc"
+__safe foreign handler fluid_synth_get_cc(in pSynth as fs_SYNTH,in pChan as CInt,in pControllerNum as CInt, out rCCValue as CInt ) returns CSInt binds to "c:libespeak>fluid_synth_get_cc"
+__safe foreign handler fluid_synth_program_change(in pSynth as fs_SYNTH,in pChan as CInt,in pProgram as CInt ) returns CInt binds to "c:libespeak>fluid_synth_program_change"
+__safe foreign handler fluid_synth_bank_select(in pSynth as fs_SYNTH,in pChan as CInt,in pBankNum as CInt ) returns CSInt binds to "c:libespeak>fluid_synth_bank_select"
+__safe foreign handler fluid_synth_all_notes_off(in pSynth as fs_SYNTH,in pChan as CInt) returns CSInt binds to "c:libespeak>fluid_synth_all_notes_off"
+__safe foreign handler fluid_synth_all_sounds_off(in pSynth as fs_SYNTH,in pChan as CInt) returns CSInt binds to "c:libespeak>fluid_synth_all_sounds_off"
+
+--pFXGroup must be in the range -1 to (fluid_synth_count_effects_groups()-1). If -1 the parameter common to all fx groups is fetched.
+__safe foreign handler fluid_synth_count_effects_groups(in pSynth as fs_SYNTH) returns CInt binds to "c:libespeak>fluid_synth_count_effects_groups"
+
+__safe foreign handler fluid_synth_set_reverb_on(in pSynth as fs_SYNTH,in pFXGroup as CSInt,in pOnOff as Boolean) returns CSInt binds to "c:libespeak>fluid_synth_set_reverb_on"
+-- fluid_synth_set_reverb is Deprecated in FluidSynth 2.x use the new reverb 'group' / individual settings versions
+__safe foreign handler fluid_synth_set_reverb( in pSynth as fs_SYNTH, pRoomsize as CDouble, pDamp as CDouble, pWidth as CDouble, pLevel as CDouble) returns CSInt binds to "c:libespeak>fluid_synth_set_reverb"
+__safe foreign handler fluid_synth_set_reverb_group_level(in pSynth as fs_SYNTH,in pFXGroup as CSInt,in pLevel as CDouble ) returns CSInt binds to "c:libespeak>fluid_synth_set_reverb_group_level"
+__safe foreign handler fluid_synth_set_reverb_group_roomsize(in pSynth as fs_SYNTH,in pFXGroup as CSInt,in pSize as CDouble) returns CSInt binds to "c:libespeak>fluid_synth_set_reverb_group_roomsize"
+__safe foreign handler fluid_synth_set_reverb_group_width(in pSynth as fs_SYNTH,in pFXGroup as CSInt,in pWidth as CDouble) returns CSInt binds to "c:libespeak>fluid_synth_set_reverb_group_width"
+__safe foreign handler fluid_synth_set_reverb_group_damp(in pSynth as fs_SYNTH,in pFXGroup as CSInt,in pDamp as CDouble) returns CSInt binds to "c:libespeak>fluid_synth_set_reverb_group_damp"
+
+__safe foreign handler fluid_synth_set_chorus_on(in pSynth as fs_SYNTH,in pFXGroup as CSInt, in pOnOff as CBool) returns CSInt binds to "c:libespeak>fluid_synth_set_chorus_on"
+-- fluid_synth_set_reverb is Deprecated in FluidSynth 2.x use the new chorus 'group' / individual settings versions
+__safe foreign handler fluid_synth_set_chorus( in pSynth as fs_SYNTH, in pChorusVoices as CInt, in pLevel as CDouble, in pSpeed as CDouble, in pDepth as CDouble, in pChorusType as CInt) \
+                                                returns CSInt binds to "c:libespeak>fluid_synth_set_chorus"
+__safe foreign handler fluid_synth_set_chorus_group_nr(in pSynth as fs_SYNTH,in pFXGroup as CSInt,in pChorusVoices as CInt ) returns CSInt binds to "c:libespeak>fluid_synth_set_chorus_group_nr"
+__safe foreign handler fluid_synth_set_chorus_group_level(in pSynth as fs_SYNTH,in pFXGroup as CSInt,in pLevel as CDouble ) returns CSInt binds to "c:libespeak>fluid_synth_set_chorus_group_level"
+__safe foreign handler fluid_synth_set_chorus_group_speed(in pSynth as fs_SYNTH,in pFXGroup as CSInt,in pSize as CDouble) returns CSInt binds to "c:libespeak>fluid_synth_set_chorus_group_speed"
+__safe foreign handler fluid_synth_set_chorus_group_depth(in pSynth as fs_SYNTH,in pFXGroup as CSInt,in pDamp as CDouble) returns CSInt binds to "c:libespeak>fluid_synth_set_chorus_group_depth"
+__safe foreign handler fluid_synth_set_chorus_group_type(in pSynth as fs_SYNTH,in pFXGroup as CSInt,in pChorusVoices as CInt ) returns CSInt binds to "c:libespeak>fluid_synth_set_chorus_group_type"
+-- FLUID_CHORUS_MOD_SINE = 0, FLUID_CHORUS_MOD_TRIANGLE = 1
+
+__safe foreign handler new_fluid_player(in pSynth as fs_SYNTH ) returns optional fs_PLAYER binds to "c:libespeak>new_fluid_player"
+__safe foreign handler delete_fluid_player(in pPlayer as fs_PLAYER) returns CBool binds to "c:libespeak>delete_fluid_player"
+__safe foreign handler fluid_player_add(in pPlayer as fs_PLAYER,in pFilename as ZStringNative) returns CInt binds to "c:libespeak>fluid_player_add"
+__safe foreign handler fluid_player_play(in pPlayer as fs_PLAYER) returns CInt binds to "c:libespeak>fluid_player_play"
+__safe foreign handler fluid_player_stop(in pPlayer as fs_PLAYER) returns CInt binds to "c:libespeak>fluid_player_stop"
+__safe foreign handler fluid_player_join(in pPlayer as fs_PLAYER) returns CInt binds to "c:libespeak>fluid_player_join"
+
+-- pLoop = 	Times left to loop the playlist. -1 means loop infinitely.
+__safe foreign handler fluid_player_set_loop(in pPlayer as fs_PLAYER,in pLoop as CInt) returns CInt binds to "c:libespeak>fluid_player_set_loop"
+__safe foreign handler fluid_player_set_bpm(in pPlayer as fs_PLAYER,in pBPM as CInt) returns CInt binds to "c:libespeak>fluid_player_set_bpm"
+__safe foreign handler fluid_player_get_bpm(in pPlayer as fs_PLAYER) returns CInt binds to "c:libespeak>fluid_player_get_bpm"
+-- per MIDI file spec so 500000 = 120 BPM
+__safe foreign handler fluid_player_set_midi_tempo(in pPlayer as fs_PLAYER,in pMicroSecsPerQrtrNote as CInt) returns CInt binds to "c:libespeak>fluid_player_set_midi_tempo" -- per MIDI file spec so 500000 = 120 BPM
+__safe foreign handler fluid_player_get_midi_tempo(in pPlayer as fs_PLAYER) returns CInt binds to "c:libespeak>fluid_player_get_midi_tempo" -- per MIDI file spec so 500000 = 120 BPM
+__safe foreign handler fluid_player_get_status(in pPlayer as fs_PLAYER) returns CInt binds to "c:libespeak>fluid_player_get_status"
+__safe foreign handler fluid_player_get_current_tick(in pPlayer as fs_PLAYER) returns CInt binds to "c:libespeak>fluid_player_get_current_tick"
+__safe foreign handler fluid_player_get_total_ticks(in pPlayer as fs_PLAYER) returns CInt binds to "c:libespeak>fluid_player_get_total_ticks"
+
+__safe foreign handler new_fluid_file_renderer(in mSynth as fs_SYNTH) returns fs_FILE_RENDERER binds to "c:libespeak>new_fluid_file_renderer"
+__safe foreign handler fluid_file_renderer_process_block(in pFileRenderer as fs_FILE_RENDERER) returns CSInt binds to "c:libespeak>fluid_file_renderer_process_block"
+__safe foreign handler delete_fluid_file_renderer(in pFileRenderer as fs_FILE_RENDERER) returns CSInt binds to "c:libespeak>delete_fluid_file_renderer"
+
+-- http://www.fluidsynth.org/api-1.x/index.html#RealtimeMIDI
+__safe foreign handler new_fluid_midi_router(in pSettings as fs_SETTINGS, in pHandler as any, in pHandlerData as optional any)\
+ 																			returns optional fs_MIDIROUTER binds to "c:libespeak>new_fluid_midi_router"
+__safe foreign handler delete_fluid_midi_router(in pPlayer as fs_MIDIROUTER) returns CBool binds to "c:libespeak>delete_fluid_midi_router"
+__safe foreign handler new_fluid_midi_router_rule() returns fs_MIDIROUTER_rule binds to "c:libespeak>new_fluid_midi_router_rule"
+__safe foreign handler delete_fluid_midi_router_rule(in pRouterRule as fs_MIDIROUTER_rule) returns CBool binds to "c:libespeak>new_fluid_midi_router_rule"
+
+
+public foreign handler type handle_midi_event_func_t( in pOptionalDataPtr as optional Pointer, in mMIDIEvtPtr as Pointer) returns CInt
+
+__safe foreign handler new_fluid_midi_driver(in pSettings as fs_SETTINGS, in pHandler as handle_midi_event_func_t, in pOptionalDataPtr as optional Pointer) \
+																	returns optional fs_MIDIdrvr binds to "c:libespeak>new_fluid_midi_driver"
+__safe foreign handler delete_fluid_midi_driver(in pPlayer as fs_MIDIdrvr) returns CBool binds to "c:libespeak>delete_fluid_midi_driver"
+__safe foreign handler fluid_midi_event_get_type(in pMIDIEvent as fs_MIDIEvent) returns Cint binds to "c:libespeak>fluid_midi_event_get_type"
+__safe foreign handler fluid_midi_event_get_channel(in pMIDIEvent as fs_MIDIEvent) returns Cint binds to "c:libespeak>fluid_midi_event_get_channel"
+__safe foreign handler fluid_midi_event_get_key(in pMIDIEvent as fs_MIDIEvent) returns Cint binds to "c:libespeak>fluid_midi_event_get_key"
+__safe foreign handler fluid_midi_event_get_velocity(in pMIDIEvent as fs_MIDIEvent) returns Cint binds to "c:libespeak>fluid_midi_event_get_velocity"
+__safe foreign handler fluid_midi_event_get_pitch(in pMIDIEvent as fs_MIDIEvent) returns Cint binds to "c:libespeak>fluid_midi_event_get_pitch"
+__safe foreign handler delete_fluid_midi_event(in pMIDIEvent as fs_MIDIEvent) returns nothing binds to "c:libespeak>delete_fluid_midi_event"
+
+-- FLUIDSYNTH_API int 	fluid_player_set_playback_callback (fluid_player_t *player, handle_midi_event_func_t handler, void *handler_data) Change the MIDI callback function. More...
+-- FLUIDSYNTH_API int 	fluid_player_seek (fluid_player_t *player, int ticks) Seek in the currently playing file. More...
+
+constant kMCStringEncodingUTF8 is 4
+__safe foreign handler MCStringEncode(in pString as String, in pEncoding as CUInt, in pIsExternalRep as CBool, out rUTF8String as Data) returns CBool binds to "<builtin>"
+__safe foreign handler MCStringCreateWithCString(in pString as Pointer, out rString as String) returns CBool binds to "<builtin>"
+--foreign handler MCStringCreateWithBytes(in pBytes as Pointer, in pByteCount as LCUInt, in pEncoding as CUInt, in pIsExternalRep as CBool, out rString as String) returns CBool binds to "<builtin>"
+--foreign handler MCDataConvertStringToData(in pString as String, out rData as Data) returns CBool binds to "<builtin>"
+__safe foreign handler MCDataGetBytePtr(in pData as Data) returns optional Pointer binds to "<builtin>"
+__safe foreign handler MCMemoryAllocate(in pSize as UIntSize, out rBlockPtr as Pointer) returns CBool binds to "<builtin>"
+-- allocates a block of size pSize bytes, places the pointer into rBlockPtr and returns true - or just returns false if it fails
+-- MCMemoryReallocate(T *p_block, size_t p_new_size, T*& r_new_block)
+__safe foreign handler MCMemoryReallocate(in rBlockPtr as Pointer, in pSize as UIntSize, out rReAllocBlockPtr as Pointer) returns CBool binds to "<builtin>"
+__safe foreign handler MCMemoryDeallocate(in rBlockPtr as Pointer) returns nothing binds to "<builtin>"
+__safe foreign handler MCWidgetGetMyScriptObject(out rObject as ScriptObject) returns nothing binds to "<builtin>"
+
+
+variable mScriptObject as ScriptObject
+
+/**
+Setup the eSpeak Engine
+
+Type: function
+
+Example:
+speakEnsureInit()
+
+Returns: True on success, false or error string on failure.
+
+Description:
+Attempts to load an instance of libespeak.
+*/
+public handler speakEnsureInit() returns optional any
+   variable tStrPtr as Pointer
+   variable tString as String
+   variable tWasSet as CSInt
+   variable tPathStrPtr as optional Pointer
+   variable tPathString as String
+	--if mInited then
+	--	return mInited
+   --	else
+      -- ESPEAK_API const char *espeak_Info(const char **path_data);
+      /* Returns the version number string.
+         path_data  returns the path to espeak_data
+      */
+      -- #endif
+      put "" into tPathString
+      put nothing into tPathStrPtr
+      put espeak_Info(tPathStrPtr) into tStrPtr
+      log tPathString
+      if MCStringCreateWithCString(tStrPtr, tString) then
+         log ["lib eSpeak version:" && tString]
+      end if
+      if MCStringCreateWithCString(tPathStrPtr,tPathString) then
+         log ["lib eSpeak voice data path:" && tPathString]
+      end if
+end handler
+
+
+
+end library

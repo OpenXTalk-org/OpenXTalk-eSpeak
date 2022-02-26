@@ -1,0 +1,14 @@
+<package version="0.0">
+  <name>org.openxtalk.library.espeak</name>
+  <title>OpenXTalk.org Speak</title>
+  <author>Paul McClernan</author>
+  <version>0.1</version>
+  <license>community</license>
+  <type>library</type>
+  <requires name="com.livecode.foreign"/>
+  <requires name="com.livecode.engine"/>
+  <requires name="com.livecode.string"/>
+  <metadata key="userVisible">true</metadata>
+  <metadata key="_ide">true</metadata>
+  <handler name="speakEnsureInit" parameters="" return="optional any"/>
+</package>

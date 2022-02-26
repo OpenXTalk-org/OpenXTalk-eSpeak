@@ -1,0 +1,13 @@
+
+code/.DS_Store
+code/arm64-android/.DS_Store
+code/armv7-android/.DS_Store
+code/x86-android/.DS_Store
+code/x86-win32/.DS_Store
+code/x86_64-android/.DS_Store
+code/x86_64-linux/.DS_Store
+code/x86_64-mac/.DS_Store
+code/x86_64-win32/.DS_Store
+resources/doc/.DS_Store
+resources/.DS_Store
+.DS_Store

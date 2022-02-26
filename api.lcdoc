@@ -1,0 +1,26 @@
+Library: 
+
+Type: 
+
+version: 0.1
+
+author: Paul McClernan
+
+
+Name: speakEnsureInit
+
+Type: function
+
+Syntax: speakEnsureInit()
+
+Summary: Setup the eSpeak Engine
+
+Example: speakEnsureInit()
+
+Returns: True on success, false or error string on failure.
+
+Description: Attempts to load an instance of libespeak.
+
+
+
+
