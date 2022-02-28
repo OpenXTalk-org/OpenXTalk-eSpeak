@@ -2,6 +2,5 @@ import module org.openxtalk.library.espeak
   use com.livecode.foreign
   use com.livecode.engine
   use com.livecode.string
-  foreign handler type handle_midi_event_func_t(in pOptionalDataPtr as optional Pointer, in mMIDIEvtPtr as Pointer) returns CSInt
   handler speakEnsureInit() returns optional any
 end module

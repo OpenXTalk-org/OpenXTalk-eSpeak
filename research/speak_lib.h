@@ -193,10 +193,6 @@ ESPEAK_API int espeak_Initialize(espeak_AUDIO_OUTPUT output, int buflength, cons
 
    path: The directory which contains the espeak-data directory, or NULL for the default location.
 
-   options: bit 0:  1=allow espeakEVENT_PHONEME events.
-            bit 1:  1= espeakEVENT_PHONEME events give IPA phoneme names, not eSpeak phoneme names
-            bit 15: 1=don't exit if espeak_data is not found (used for --help)
-
    Returns: sample rate in Hz, or -1 (EE_INTERNAL_ERROR).
 */
 

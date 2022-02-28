@@ -17,28 +17,6 @@ use com.livecode.engine
 use com.livecode.library.widgetutils
 use com.livecode.system
 
-private type fs_SETTINGS is Pointer
-private type fs_SYNTH is Pointer
-private type fs_AUIDIOdrvr is Pointer
-private type fs_PLAYER is Pointer
-private type fs_SOUNDFONT is Pointer
-private type fs_FILE_RENDERER is Pointer
-private type fs_MIDIROUTER is Pointer
-private type fs_MIDIROUTER_rule is Pointer
-private type fs_MIDIdrvr is Pointer
-private type fs_MIDIEvent is Pointer
-
-constant kFLUID_OK is 0
-constant kFLUID_FAILED is -1
-
-private variable mInited as Boolean
-private variable mSettings as optional fs_SETTINGS
-private variable mSynth as optional fs_SYNTH
-private variable mAudioDriver	as optional fs_AUIDIOdrvr
-private variable mPlayer as optional fs_PLAYER
-
-__safe foreign handler espeak_Synth( in pOutput as ZStringNative, in pSize as UIntSize, in pPosition as CUInt, in pPositionType as CUInt, in pEndPosition as CUInt, in pFlags as CUInt, in pID as optional CUInt, in pCustDataPtr as optional Pointer ) returns CSInt binds to "c:libespeak>espeak_Synth"
-
 -- espeak_ERROR espeak_Synth( const void *text,	size_t size, unsigned int position, espeak_POSITION_TYPE position_type,
 --	unsigned int end_position, unsigned int flags, unsigned int* unique_identifier, void* user_data);
 /* Synthesize speech for the specified text.  The speech sound data is passed to the calling
@@ -92,16 +70,80 @@ __safe foreign handler espeak_Synth( in pOutput as ZStringNative, in pSize as UI
 	   EE_INTERNAL_ERROR.
 */
 
+-- espeak_ERROR enum:
+constant kEE_INTERNAL_ERROR is -1
+constant kEE_OK is 0 -- no error
+constant kEE_BUFFER_FULL is 1
+constant kEE_NOT_FOUND is 2
+
+constant espeakCHARS_AUTO is 0
+constant espeakCHARS_UTF8 is  1
+constant espeakCHARS_8BIT is  2
+constant espeakCHARS_WCHAR is 3
+constant espeakCHARS_16BIT is 4
+
+constant espeakSSML      is  16
+constant espeakPHONEMES  is  256
+constant espeakENDPAUSE  is  4096
+constant espeakKEEP_NAMEDATA is 8192
+
+-- values for 'value' in espeak_SetParameter(espeakRATE, value, 0), nominally in words-per-minute
+constant espeakRATE_MINIMUM  is 80
+constant espeakRATE_MAXIMUM  is 450
+constant espeakRATE_NORMAL   is 175
+
+constant espeakINITIALIZE_PHONEME_EVENTS is 1
+constant espeakINITIALIZE_PHONEME_IPA  is 2
+constant espeakINITIALIZE_DONT_EXIT    is 0
+
+constant ESPEAK_API_REVISION is  9
+
+-- espeak_EVENT_TYPEs:
+constant espeakEVENT_LIST_TERMINATED is 0  -- Retrieval mode: terminates the event list.
+constant  espeakEVENT_WORD is 1            -- Start of word
+constant  espeakEVENT_SENTENCE is 2        -- Start of sentence
+constant  espeakEVENT_MARK is 3            -- Mark
+constant  espeakEVENT_PLAY is 4            -- Audio element
+constant  espeakEVENT_END is 5             -- End of sentence or clause
+constant  espeakEVENT_MSG_TERMINATED is 6  -- End of message
+constant  espeakEVENT_PHONEME is 7         -- Phoneme, if enabled in espeak_Initialize()
+constant  espeakEVENT_SAMPLERATE is 8       -- internal use, set sample rate
 
 
+-- espeak_PARAMETERs
+constant  espeakSILENCE is 0 --  internal use
+constant  espeakRATE is 1
+constant  espeakVOLUME is 2
+constant  espeakPITCH is 3
+constant  espeakRANGE is 4
+constant  espeakPUNCTUATION is 5
+constant  espeakCAPITALS is 6
+constant  espeakWORDGAP is 7
+constant  espeakOPTIONS is 8   -- reserved for misc. options.  not yet used
+constant  espeakINTONATION is 9
+constant  espeakRESERVED1 is 10
+constant  espeakRESERVED2 is 11
+--constant  espeakEMPHASIS   -- internal use
+--constant  espeakLINELENGTH -- internal use
+--constant  espeakVOICETYPE  -- internal, 1=mbrola
+--constant  N_SPEECH_PARAM    -- last enum
+
+-- espeak_PUNCT_TYPEs:
+constant espeakPUNCT_NONE is 0
+constant espeakPUNCT_ALL is 1
+constant espeakPUNCT_SOME is 2
+
+private variable mInited as Boolean
+
+private type eSpeak_SETTINGS is Pointer
+private variable mSettings as optional eSpeak_SETTINGS
+
+variable mScriptObject as ScriptObject
 
 
+__safe foreign handler espeak_Synth( in pOutput as ZStringNative, in pSize as UIntSize, in pPosition as CUInt, in pPositionType as CUInt, in pEndPosition as CUInt, in pFlags as CUInt, in pID as optional CUInt, in pCustDataPtr as optional Pointer ) returns CSInt binds to "c:libespeak>espeak_Synth"
 
-
-
-
-
-__safe foreign handler espeak_Initialize( in pOutput as ZStringNative, in pBufferLen as CUInt, in pVocDataPath as optional ZStringNative, in pOption as CUInt ) returns CUInt binds to "c:libespeak>espeak_Initialize"
+__safe foreign handler espeak_Initialize( in pOutput as ZStringNative, in pBufferLen as CUInt, in pVocDataPath as optional ZStringNative, in pOption as CUInt ) returns CSInt binds to "c:libespeak>espeak_Initialize"
 
 __safe foreign handler espeak_Info(inout rPathStrPtr as optional Pointer) returns Pointer binds to "c:libespeak>espeak_Info"
 
@@ -123,114 +165,6 @@ __safe foreign handler espeak_Info(inout rPathStrPtr as optional Pointer) return
    Returns: sample rate in Hz, or -1 (EE_INTERNAL_ERROR).
 */
 
-
-__safe foreign handler fluid_settings_setnum(in pSettings as fs_SETTINGS, in pSettingName as ZStringNative, in pNumber as CDouble) returns CInt binds to "c:libespeak>fluid_settings_setnum"
-__safe foreign handler fluid_settings_getnum(in pSettings as fs_SETTINGS, in pSettingName as ZStringNative, out rNumber as CDouble) returns CInt binds to "c:libespeak>fluid_settings_getnum"
-__safe foreign handler fluid_settings_setint(in pSettings as fs_SETTINGS, in pSettingName as ZStringNative, in pNumber as CInt) returns CInt binds to "c:libespeak>fluid_settings_setint"
-__safe foreign handler fluid_settings_getint(in pSettings as fs_SETTINGS, in pSettingName as ZStringNative, out rNumber as CInt) returns CInt binds to "c:libespeak>fluid_settings_getint"
-__safe foreign handler fluid_settings_setstr(in pSettings as fs_SETTINGS, in pSettingName as ZStringNative, in pSettingString as ZStringNative) returns Cbool binds to "c:libespeak>fluid_settings_setstr"
-__safe foreign handler fluid_settings_getstr(in pSettings as fs_SETTINGS, in pSettingName as ZStringNative, out rSettingString as ZStringNative) returns CBool binds to "c:libespeak>fluid_settings_getstr"
-
-__safe foreign handler fluid_settings_getstr_default(in pSettings as fs_SETTINGS, in pSettingName as ZStringNative, out rSettingString as ZStringNative) returns CBool binds to "c:libespeak>fluid_settings_getstr_default"
-
-__safe foreign handler fluid_is_midifile(in pFilename as ZStringNative ) returns CBool binds to "c:libespeak>fluid_is_midifile"
-__safe foreign handler fluid_is_soundfont(in pFilename as ZStringNative ) returns CBool binds to "c:libespeak>fluid_is_soundfont"
-__safe foreign handler fluid_version(out rMaj as CInt, out rMin as CInt, out rMicr as CInt) returns nothing binds to "c:libespeak>fluid_version"
-__safe foreign handler fluid_version_str() returns Pointer binds to "c:libespeak>fluid_version_str"
-
-__safe foreign handler new_fluid_audio_driver(in pSettings as fs_SETTINGS,in pSynth as fs_SYNTH ) returns optional fs_AUIDIOdrvr binds to "c:libespeak>new_fluid_audio_driver"
-__safe foreign handler delete_fluid_audio_driver(in pDriver as fs_AUIDIOdrvr ) returns nothing binds to "c:libespeak>delete_fluid_audio_driver"
-
-__safe foreign handler new_fluid_synth(in pSettings as fs_SETTINGS) returns optional fs_SYNTH binds to "c:libespeak>new_fluid_synth"
-__safe foreign handler delete_fluid_synth(in pSynth as fs_SYNTH) returns CBool binds to "c:libespeak>delete_fluid_synth"
-__safe foreign handler fluid_synth_get_cpu_load(in pSynth as fs_SYNTH) returns CDouble binds to "c:libespeak>fluid_synth_get_cpu_load"
-__safe foreign handler fluid_synth_sfload(in pSynth as fs_SYNTH,in pFilename as ZStringNative,in pResetPresets as CBool) returns CSInt binds to "c:libespeak>fluid_synth_sfload"
-__safe foreign handler fluid_synth_add_sfont(in pSynth as fs_SYNTH, in pSoudFont as fs_SOUNDFONT ) returns CSInt binds to "c:libespeak>fluid_synth_add_sfont"
-__safe foreign handler fluid_synth_remove_sfont(in pSynth as fs_SYNTH,in pSoudFont as fs_SOUNDFONT ) returns CSInt binds to "c:libespeak>fluid_synth_remove_sfont"
-__safe foreign handler fluid_synth_sfunload(in pSynth as fs_SYNTH,in pSoudFont as fs_SOUNDFONT, in pReset as CInt) returns CSInt binds to "c:libespeak>fluid_synth_sfunload"
-__safe foreign handler fluid_synth_sfreload(in pSynth as fs_SYNTH,in pSoundFontId as Cint) returns CSInt binds to "c:libespeak>fluid_synth_sfreload"
-__safe foreign handler fluid_synth_get_sfont(in pSynth as fs_SYNTH, in pSFontIndexNum as CInt) returns optional fs_SOUNDFONT binds to "c:libespeak>fluid_synth_get_sfont" -- Index is 0 to _sfcount -1
-__safe foreign handler fluid_synth_get_sfont_by_id(in pSynth as fs_SYNTH, in pSFontID as CInt) returns optional fs_SOUNDFONT binds to "c:libespeak>fluid_synth_get_sfont_by_id"
-__safe foreign handler fluid_sfont_get_name(in pSoundFont as optional fs_SOUNDFONT) returns optional Pointer binds to "c:libespeak>fluid_sfont_get_name" -- pointer to *char string
-__safe foreign handler fluid_synth_sfcount(in pSynth as fs_SYNTH ) returns CInt binds to "c:libespeak>fluid_synth_sfcount"
-__safe foreign handler fluid_synth_system_reset(in pSynth as fs_SYNTH) returns CBool binds to "c:libespeak>fluid_synth_system_reset"
-__safe foreign handler fluid_synth_noteon(in pSynth as fs_SYNTH,in pChan as CInt,in pKey as CInt, in pVel as CInt ) returns CSInt binds to "c:libespeak>fluid_synth_noteon"
-__safe foreign handler fluid_synth_noteoff(in pSynth as fs_SYNTH,in pChan as CInt,in pKey as CInt ) returns CInt binds to "c:libespeak>fluid_synth_noteoff"
-__safe foreign handler fluid_synth_pitch_bend(in pSynth as fs_SYNTH,in pChan as CInt,in pBend as CInt ) returns CSInt binds to "c:libespeak>fluid_synth_pitch_bend" -- bend 0-16383, 8192 as center
-__safe foreign handler fluid_synth_cc(in pSynth as fs_SYNTH,in pChan as CInt,in pControllerNum as CInt, in pCCValue as CInt ) returns CSInt binds to "c:libespeak>fluid_synth_cc"
-__safe foreign handler fluid_synth_get_cc(in pSynth as fs_SYNTH,in pChan as CInt,in pControllerNum as CInt, out rCCValue as CInt ) returns CSInt binds to "c:libespeak>fluid_synth_get_cc"
-__safe foreign handler fluid_synth_program_change(in pSynth as fs_SYNTH,in pChan as CInt,in pProgram as CInt ) returns CInt binds to "c:libespeak>fluid_synth_program_change"
-__safe foreign handler fluid_synth_bank_select(in pSynth as fs_SYNTH,in pChan as CInt,in pBankNum as CInt ) returns CSInt binds to "c:libespeak>fluid_synth_bank_select"
-__safe foreign handler fluid_synth_all_notes_off(in pSynth as fs_SYNTH,in pChan as CInt) returns CSInt binds to "c:libespeak>fluid_synth_all_notes_off"
-__safe foreign handler fluid_synth_all_sounds_off(in pSynth as fs_SYNTH,in pChan as CInt) returns CSInt binds to "c:libespeak>fluid_synth_all_sounds_off"
-
---pFXGroup must be in the range -1 to (fluid_synth_count_effects_groups()-1). If -1 the parameter common to all fx groups is fetched.
-__safe foreign handler fluid_synth_count_effects_groups(in pSynth as fs_SYNTH) returns CInt binds to "c:libespeak>fluid_synth_count_effects_groups"
-
-__safe foreign handler fluid_synth_set_reverb_on(in pSynth as fs_SYNTH,in pFXGroup as CSInt,in pOnOff as Boolean) returns CSInt binds to "c:libespeak>fluid_synth_set_reverb_on"
--- fluid_synth_set_reverb is Deprecated in FluidSynth 2.x use the new reverb 'group' / individual settings versions
-__safe foreign handler fluid_synth_set_reverb( in pSynth as fs_SYNTH, pRoomsize as CDouble, pDamp as CDouble, pWidth as CDouble, pLevel as CDouble) returns CSInt binds to "c:libespeak>fluid_synth_set_reverb"
-__safe foreign handler fluid_synth_set_reverb_group_level(in pSynth as fs_SYNTH,in pFXGroup as CSInt,in pLevel as CDouble ) returns CSInt binds to "c:libespeak>fluid_synth_set_reverb_group_level"
-__safe foreign handler fluid_synth_set_reverb_group_roomsize(in pSynth as fs_SYNTH,in pFXGroup as CSInt,in pSize as CDouble) returns CSInt binds to "c:libespeak>fluid_synth_set_reverb_group_roomsize"
-__safe foreign handler fluid_synth_set_reverb_group_width(in pSynth as fs_SYNTH,in pFXGroup as CSInt,in pWidth as CDouble) returns CSInt binds to "c:libespeak>fluid_synth_set_reverb_group_width"
-__safe foreign handler fluid_synth_set_reverb_group_damp(in pSynth as fs_SYNTH,in pFXGroup as CSInt,in pDamp as CDouble) returns CSInt binds to "c:libespeak>fluid_synth_set_reverb_group_damp"
-
-__safe foreign handler fluid_synth_set_chorus_on(in pSynth as fs_SYNTH,in pFXGroup as CSInt, in pOnOff as CBool) returns CSInt binds to "c:libespeak>fluid_synth_set_chorus_on"
--- fluid_synth_set_reverb is Deprecated in FluidSynth 2.x use the new chorus 'group' / individual settings versions
-__safe foreign handler fluid_synth_set_chorus( in pSynth as fs_SYNTH, in pChorusVoices as CInt, in pLevel as CDouble, in pSpeed as CDouble, in pDepth as CDouble, in pChorusType as CInt) \
-                                                returns CSInt binds to "c:libespeak>fluid_synth_set_chorus"
-__safe foreign handler fluid_synth_set_chorus_group_nr(in pSynth as fs_SYNTH,in pFXGroup as CSInt,in pChorusVoices as CInt ) returns CSInt binds to "c:libespeak>fluid_synth_set_chorus_group_nr"
-__safe foreign handler fluid_synth_set_chorus_group_level(in pSynth as fs_SYNTH,in pFXGroup as CSInt,in pLevel as CDouble ) returns CSInt binds to "c:libespeak>fluid_synth_set_chorus_group_level"
-__safe foreign handler fluid_synth_set_chorus_group_speed(in pSynth as fs_SYNTH,in pFXGroup as CSInt,in pSize as CDouble) returns CSInt binds to "c:libespeak>fluid_synth_set_chorus_group_speed"
-__safe foreign handler fluid_synth_set_chorus_group_depth(in pSynth as fs_SYNTH,in pFXGroup as CSInt,in pDamp as CDouble) returns CSInt binds to "c:libespeak>fluid_synth_set_chorus_group_depth"
-__safe foreign handler fluid_synth_set_chorus_group_type(in pSynth as fs_SYNTH,in pFXGroup as CSInt,in pChorusVoices as CInt ) returns CSInt binds to "c:libespeak>fluid_synth_set_chorus_group_type"
--- FLUID_CHORUS_MOD_SINE = 0, FLUID_CHORUS_MOD_TRIANGLE = 1
-
-__safe foreign handler new_fluid_player(in pSynth as fs_SYNTH ) returns optional fs_PLAYER binds to "c:libespeak>new_fluid_player"
-__safe foreign handler delete_fluid_player(in pPlayer as fs_PLAYER) returns CBool binds to "c:libespeak>delete_fluid_player"
-__safe foreign handler fluid_player_add(in pPlayer as fs_PLAYER,in pFilename as ZStringNative) returns CInt binds to "c:libespeak>fluid_player_add"
-__safe foreign handler fluid_player_play(in pPlayer as fs_PLAYER) returns CInt binds to "c:libespeak>fluid_player_play"
-__safe foreign handler fluid_player_stop(in pPlayer as fs_PLAYER) returns CInt binds to "c:libespeak>fluid_player_stop"
-__safe foreign handler fluid_player_join(in pPlayer as fs_PLAYER) returns CInt binds to "c:libespeak>fluid_player_join"
-
--- pLoop = 	Times left to loop the playlist. -1 means loop infinitely.
-__safe foreign handler fluid_player_set_loop(in pPlayer as fs_PLAYER,in pLoop as CInt) returns CInt binds to "c:libespeak>fluid_player_set_loop"
-__safe foreign handler fluid_player_set_bpm(in pPlayer as fs_PLAYER,in pBPM as CInt) returns CInt binds to "c:libespeak>fluid_player_set_bpm"
-__safe foreign handler fluid_player_get_bpm(in pPlayer as fs_PLAYER) returns CInt binds to "c:libespeak>fluid_player_get_bpm"
--- per MIDI file spec so 500000 = 120 BPM
-__safe foreign handler fluid_player_set_midi_tempo(in pPlayer as fs_PLAYER,in pMicroSecsPerQrtrNote as CInt) returns CInt binds to "c:libespeak>fluid_player_set_midi_tempo" -- per MIDI file spec so 500000 = 120 BPM
-__safe foreign handler fluid_player_get_midi_tempo(in pPlayer as fs_PLAYER) returns CInt binds to "c:libespeak>fluid_player_get_midi_tempo" -- per MIDI file spec so 500000 = 120 BPM
-__safe foreign handler fluid_player_get_status(in pPlayer as fs_PLAYER) returns CInt binds to "c:libespeak>fluid_player_get_status"
-__safe foreign handler fluid_player_get_current_tick(in pPlayer as fs_PLAYER) returns CInt binds to "c:libespeak>fluid_player_get_current_tick"
-__safe foreign handler fluid_player_get_total_ticks(in pPlayer as fs_PLAYER) returns CInt binds to "c:libespeak>fluid_player_get_total_ticks"
-
-__safe foreign handler new_fluid_file_renderer(in mSynth as fs_SYNTH) returns fs_FILE_RENDERER binds to "c:libespeak>new_fluid_file_renderer"
-__safe foreign handler fluid_file_renderer_process_block(in pFileRenderer as fs_FILE_RENDERER) returns CSInt binds to "c:libespeak>fluid_file_renderer_process_block"
-__safe foreign handler delete_fluid_file_renderer(in pFileRenderer as fs_FILE_RENDERER) returns CSInt binds to "c:libespeak>delete_fluid_file_renderer"
-
--- http://www.fluidsynth.org/api-1.x/index.html#RealtimeMIDI
-__safe foreign handler new_fluid_midi_router(in pSettings as fs_SETTINGS, in pHandler as any, in pHandlerData as optional any)\
- 																			returns optional fs_MIDIROUTER binds to "c:libespeak>new_fluid_midi_router"
-__safe foreign handler delete_fluid_midi_router(in pPlayer as fs_MIDIROUTER) returns CBool binds to "c:libespeak>delete_fluid_midi_router"
-__safe foreign handler new_fluid_midi_router_rule() returns fs_MIDIROUTER_rule binds to "c:libespeak>new_fluid_midi_router_rule"
-__safe foreign handler delete_fluid_midi_router_rule(in pRouterRule as fs_MIDIROUTER_rule) returns CBool binds to "c:libespeak>new_fluid_midi_router_rule"
-
-
-public foreign handler type handle_midi_event_func_t( in pOptionalDataPtr as optional Pointer, in mMIDIEvtPtr as Pointer) returns CInt
-
-__safe foreign handler new_fluid_midi_driver(in pSettings as fs_SETTINGS, in pHandler as handle_midi_event_func_t, in pOptionalDataPtr as optional Pointer) \
-																	returns optional fs_MIDIdrvr binds to "c:libespeak>new_fluid_midi_driver"
-__safe foreign handler delete_fluid_midi_driver(in pPlayer as fs_MIDIdrvr) returns CBool binds to "c:libespeak>delete_fluid_midi_driver"
-__safe foreign handler fluid_midi_event_get_type(in pMIDIEvent as fs_MIDIEvent) returns Cint binds to "c:libespeak>fluid_midi_event_get_type"
-__safe foreign handler fluid_midi_event_get_channel(in pMIDIEvent as fs_MIDIEvent) returns Cint binds to "c:libespeak>fluid_midi_event_get_channel"
-__safe foreign handler fluid_midi_event_get_key(in pMIDIEvent as fs_MIDIEvent) returns Cint binds to "c:libespeak>fluid_midi_event_get_key"
-__safe foreign handler fluid_midi_event_get_velocity(in pMIDIEvent as fs_MIDIEvent) returns Cint binds to "c:libespeak>fluid_midi_event_get_velocity"
-__safe foreign handler fluid_midi_event_get_pitch(in pMIDIEvent as fs_MIDIEvent) returns Cint binds to "c:libespeak>fluid_midi_event_get_pitch"
-__safe foreign handler delete_fluid_midi_event(in pMIDIEvent as fs_MIDIEvent) returns nothing binds to "c:libespeak>delete_fluid_midi_event"
-
--- FLUIDSYNTH_API int 	fluid_player_set_playback_callback (fluid_player_t *player, handle_midi_event_func_t handler, void *handler_data) Change the MIDI callback function. More...
--- FLUIDSYNTH_API int 	fluid_player_seek (fluid_player_t *player, int ticks) Seek in the currently playing file. More...
-
 constant kMCStringEncodingUTF8 is 4
 __safe foreign handler MCStringEncode(in pString as String, in pEncoding as CUInt, in pIsExternalRep as CBool, out rUTF8String as Data) returns CBool binds to "<builtin>"
 __safe foreign handler MCStringCreateWithCString(in pString as Pointer, out rString as String) returns CBool binds to "<builtin>"
@@ -244,19 +178,6 @@ __safe foreign handler MCMemoryReallocate(in rBlockPtr as Pointer, in pSize as U
 __safe foreign handler MCMemoryDeallocate(in rBlockPtr as Pointer) returns nothing binds to "<builtin>"
 __safe foreign handler MCWidgetGetMyScriptObject(out rObject as ScriptObject) returns nothing binds to "<builtin>"
 
-
-variable mScriptObject as ScriptObject
-
-constant espeakCHARS_AUTO is 0
-constant espeakCHARS_UTF8 is  1
-constant espeakCHARS_8BIT is  2
-constant espeakCHARS_WCHAR is 3
-constant espeakCHARS_16BIT is 4
-
-constant espeakSSML      is  16
-constant espeakPHONEMES  is  256
-constant espeakENDPAUSE  is  4096
-constant espeakKEEP_NAMEDATA is 8192
 
 /**
 Setup the eSpeak Engine
@@ -275,6 +196,9 @@ public handler speakEnsureInit() returns optional any
    variable tStrPtr as Pointer
    variable tString as String
    variable tWasSet as CSInt
+   variable tOptions as CUInt
+   variable tBufferLen as CUInt
+
    variable tPathStrPtr as optional Pointer
    variable tPathString as ZStringNative
    variable tSize as CUInt
@@ -298,17 +222,22 @@ public handler speakEnsureInit() returns optional any
          log ["lib eSpeak voice data path:" && tPathString]
       end if
 
-      put espeak_Initialize("AUDIO_OUTPUT_PLAYBACK",0,nothing,0) into tWasSet
+      -- buflength:  The length in mS of sound buffers passed to the SynthCallback function.  Value=0 gives a default of 200mS. This paramater is only used for AUDIO_OUTPUT_RETRIEVAL and AUDIO_OUTPUT_SYNCHRONOUS modes.
+      put 0 into tBufferLen
+      -- options: bit 0:  1=allow espeakEVENT_PHONEME events. bit 1:  1= espeakEVENT_PHONEME events give IPA phoneme names, not eSpeak phoneme names. bit 15: 1=don't exit if espeak_data is not found (used for --help)
+      put 1 into tOptions
+      put espeak_Initialize("AUDIO_OUTPUT_PLAYBACK",tBufferLen,nothing,tOptions) into tWasSet
       log tWasSet -- logs 22050, which is KHz sample rate
       put "Hello eSpeak!" into tString
-
       put 14 into tSize
       -- POS_CHARACTER = 1, POS_WORD, POS_SENTENCE
       -- put espeakCHARS_AUTO = 0 + espeakENDPAUSE = 4096 into tFlags
-      -- put espeak_Synth(tString,tSize,0,1,0,4096,nothing,nothing) into tWasSet -- crashes engine
+      put espeak_Synth(tString,tSize,0,1,0,4096,nothing,nothing) into tWasSet -- crashes engine
       -- log tWasSet
 end handler
+-- https://www.youtube.com/watch?v=MC2K6yotimY
 
+-- https://www.youtube.com/watch?v=lC-i3Q-2KcY
 /**
 #include</usr/local/include/espeak/speak_lib.h>
 int main(int argc, char* argv[] )
@@ -324,5 +253,165 @@ espeak_Synchronize( );
 return 0;
 }`
 **/
+
+
+/*
+   TITLE: Simple C/C++ Program showing use of speak_lib.h
+   AUTHOR:Dhananjay Singh
+   LICENSE: GPLv2
+
+#include <string.h>
+#include <malloc.h>
+#include <./src/speak_lib.h>
+
+
+espeak_POSITION_TYPE position_type;
+espeak_AUDIO_OUTPUT output;
+char *path=NULL;
+int Buflength = 500, Options=0;
+void* user_data;
+t_espeak_callback *SynthCallback;
+espeak_PARAMETER Parm;
+
+/*
+   FROM speak_lib.h :
+
+   output: the audio data can either be played by eSpeak or passed back by the SynthCallback function.
+
+   Buflength:  The length in mS of sound buffers passed to the SynthCallback function.
+
+   options: bit 0: 1=allow espeakEVENT_PHONEME events.
+
+   path: The directory which contains the espeak-data directory, or NULL for the default location.
+
+   espeak_Initialize() Returns: sample rate in Hz, or -1 (EE_INTERNAL_ERROR).
+
+
+char Voice[] = {"lt+klatt2"};
+/*
+    Voice: Refer to speak_lib.h
+
+char text[30] = {"Labas. Šauk. Laikas. Taika"};
+unsigned int Size,position=0, end_position=0, flags=espeakCHARS_AUTO, *unique_identifier;
+
+/*
+   text: The text to be spoken, terminated by a zero character. It may be either 8-bit characters,
+      wide characters (wchar_t), or UTF8 encoding.  Which of these is determined by the "flags"
+      parameter.
+
+   Size: Equal to (or greatrer than) the size of the text data, in bytes.  This is used in order
+      to allocate internal storage space for the text.  This value is not used for
+      AUDIO_OUTPUT_SYNCHRONOUS mode.
+
+   position:  The position in the text where speaking starts. Zero indicates speak from the
+      start of the text.
+
+   position_type:  Determines whether "position" is a number of characters, words, or sentences.
+      Values:
+
+   end_position:  If set, this gives a character position at which speaking will stop.  A value
+      of zero indicates no end position.
+
+   flags:  These may be OR'd together:
+      Type of character codes, one of:
+         espeakCHARS_UTF8     UTF8 encoding
+         espeakCHARS_8BIT     The 8 bit ISO-8859 character set for the particular language.
+         espeakCHARS_AUTO     8 bit or UTF8  (this is the default)
+         espeakCHARS_WCHAR    Wide characters (wchar_t)
+
+      espeakSSML   Elements within < > are treated as SSML elements, or if not recognised are ignored.
+
+      espeakPHONEMES  Text within [[ ]] is treated as phonemes codes (in espeak's Hirshenbaum encoding).
+
+      espeakENDPAUSE  If set then a sentence pause is added at the end of the text.  If not set then
+         this pause is suppressed.
+
+   unique_identifier: message identifier; helpful for identifying later
+     data supplied to the callback.
+
+   user_data: pointer which will be passed to the callback function.
+
+   espeak_Synth() Returns: EE_OK: operation achieved
+                           EE_BUFFER_FULL: the command can not be buffered;
+                           you may try after a while to call the function again.
+                    	   EE_INTERNAL_ERROR.
+
+int main(int argc, char* argv[] )
+{
+    output = AUDIO_OUTPUT_PLAYBACK;
+    int I, Run = 1, L;
+    espeak_Initialize(output, Buflength, path, Options );
+    //espeak_SetVoiceByName(Voice);
+    const char *langNativeString = "lt"; //Default to US English
+    espeak_VOICE voice;
+	memset(&voice, 0, sizeof(espeak_VOICE)); // Zero out the voice first
+	voice.languages = langNativeString;
+	voice.name = "klatt";
+	voice.variant = 2;
+	voice.gender = 1;
+	espeak_SetVoiceByProperties(&voice);
+    Size = strlen(text)+1;
+    printf("Saying  '%s'",text);
+    espeak_Synth( text, Size, position, position_type, end_position, flags,
+    unique_identifier, user_data );
+    espeak_Synchronize( );
+    printf("\n:Done\n");
+    return 0;
+}
+*/
+
+
+/*
+//speech synth
+//using espeak
+//Written by Bill Heaster
+/*
+ * This is the most minimalistic approach to getting espeak running with the C api
+ *
+ *
+ * compile with gcc -W -o myEspeak myEspeak.c -lespeak
+ *
+ * This was tested in ubuntu 15.10 I had to download the following packages.
+ * espeak-data
+ * libespeak-dev
+ *
+ * */
+
+/*
+#include <stdio.h>
+#include <string.h>
+#include <espeak/speak_lib.h>
+
+
+/* Must be called before any synthesis functions are called.
+   This specifies a function in the calling program which is called when a buffer of
+   speech sound data has been produced.
+
+   The callback function is of the form:
+
+int SynthCallback(short *wav, int numsamples, espeak_EVENT *events);
+
+   wav:  is the speech sound data which has been produced.
+      NULL indicates that the synthesis has been completed.
+
+   numsamples: is the number of entries in wav.  This number may vary, may be less than
+      the value implied by the buflength parameter given in espeak_Initialize, and may
+      sometimes be zero (which does NOT indicate end of synthesis).
+
+   events: an array of espeak_EVENT items which indicate word and sentence events, and
+      also the occurance if <mark> and <audio> elements within the text.  The list of
+      events is terminated by an event of type = 0.
+
+
+   Callback returns: 0=continue synthesis,  1=abort synthesis.
+
+//don't delete this callback function.
+int SynthCallback(short *wav, int numsamples, espeak_EVENT *events)
+{
+
+    return 0;
+}
+
+*/
 
 end library
