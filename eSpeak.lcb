@@ -109,7 +109,6 @@ constant  espeakEVENT_MSG_TERMINATED is 6  -- End of message
 constant  espeakEVENT_PHONEME is 7         -- Phoneme, if enabled in espeak_Initialize()
 constant  espeakEVENT_SAMPLERATE is 8       -- internal use, set sample rate
 
-
 -- espeak_PARAMETERs
 constant  espeakSILENCE is 0 --  internal use
 constant  espeakRATE is 1
@@ -141,16 +140,23 @@ private variable mSettings as optional eSpeak_SETTINGS
 variable mScriptObject as ScriptObject
 
 
+-- espeak_ERROR = espeak_Synth(const void *text, size_t size, unsigned int position, espeak_POSITION_TYPE position_type, unsigned int end_position, unsigned int flags, unsigned int* unique_identifier, void* user_data);
+
 __safe foreign handler espeak_Synth( in pOutput as ZStringNative, in pSize as UIntSize, in pPosition as CUInt, in pPositionType as CUInt, in pEndPosition as CUInt, in pFlags as CUInt, in pID as optional CUInt, in pCustDataPtr as optional Pointer ) returns CSInt binds to "c:libespeak>espeak_Synth"
 
 __safe foreign handler espeak_Initialize( in pOutput as ZStringNative, in pBufferLen as CUInt, in pVocDataPath as optional ZStringNative, in pOption as CUInt ) returns CSInt binds to "c:libespeak>espeak_Initialize"
+
+-- typedef enum { POS_CHARACTER = 1, POS_WORD, POS_SENTENCE } espeak_POSITION_TYPE;
+
+__safe foreign handler speakSynthesize( in pStrPtr as optional Pointer, in pSize as UIntSize,in pPosition as CUInt, in pPositionType as optional any, \
+   in pEndPosition as CUInt, in pFlags as CUInt int flags, in pPosition as optional any, in pPosition as optional CUInt) returns espeak_ERROR binds to ""
 
 __safe foreign handler espeak_Info(inout rPathStrPtr as optional Pointer) returns Pointer binds to "c:libespeak>espeak_Info"
 
 -- ESPEAK_API int espeak_Initialize(espeak_AUDIO_OUTPUT output, int buflength, const char *path, int options);
 
 /* Must be called before any synthesis functions are called.
-   output: the audio data can either be played by eSpeak or passed back by the SynthCallback function.
+   output: the audio data can either be played by eSpeak or passed back by the SynthCallback function.s
 
    buflength:  The length in mS of sound buffers passed to the SynthCallback function.
             Value=0 gives a default of 200mS.
@@ -163,6 +169,24 @@ __safe foreign handler espeak_Info(inout rPathStrPtr as optional Pointer) return
             bit 15: 1=don't exit if espeak_data is not found (used for --help)
 
    Returns: sample rate in Hz, or -1 (EE_INTERNAL_ERROR).
+*/
+
+/*
+foreign type espeak_EVENT:
+	espeak_EVENT_TYPE type -- CUInt,CUInt,CUInt,CUInt,CUInt,OptionalPointer,ID Union is one of: char-string[8] or Str Pointer or Int (8 bytes?)
+
+   unsigned int unique_identifier; // message identifier (or 0 for key or character)
+	int text_position;    // the number of characters from the start of the text
+	int length;           // word length, in characters (for espeakEVENT_WORD)
+	int audio_position;   // the time in mS within the generated speech output data
+	int sample;           // sample id (internal use)
+	void* user_data;      // pointer supplied by the calling program
+	union {
+		int number;        // used for WORD and SENTENCE events.
+		const char *name;  // used for MARK and PLAY events.  UTF8 string
+		char string[8];    // used for phoneme names (UTF8). Terminated by a zero byte unless the name needs the full 8 bytes.
+	} id;
+} ;
 */
 
 constant kMCStringEncodingUTF8 is 4
@@ -235,6 +259,7 @@ public handler speakEnsureInit() returns optional any
       put espeak_Synth(tString,tSize,0,1,0,4096,nothing,nothing) into tWasSet -- crashes engine
       -- log tWasSet
 end handler
+
 -- https://www.youtube.com/watch?v=MC2K6yotimY
 
 -- https://www.youtube.com/watch?v=lC-i3Q-2KcY
