@@ -2,5 +2,6 @@ import module org.openxtalk.library.espeak
   use com.livecode.foreign
   use com.livecode.engine
   use com.livecode.string
+  foreign type espeak_VOICE_stuct
   handler speakEnsureInit() returns optional any
 end module

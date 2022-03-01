@@ -137,21 +137,36 @@ private variable mInited as Boolean
 private type eSpeak_SETTINGS is Pointer
 private variable mSettings as optional eSpeak_SETTINGS
 
-variable mScriptObject as ScriptObject
+private type espeak_ERROR is CSInt
 
+__safe foreign handler espeak_GetCurrentVoice( in pPtr as optional Pointer ) returns espeak_VOICE_ptr binds to "c:libespeak>espeak_GetCurrentVoice"
+
+-- espeak_VOICE *espeak_GetCurrentVoice(void);
+/* Returns the espeak_VOICE data for the currently selected voice.
+   This is not affected by temporary voice changes caused by SSML elements such as <voice> and <s>
+*/
+
+
+variable mScriptObject as ScriptObject
 
 -- espeak_ERROR = espeak_Synth(const void *text, size_t size, unsigned int position, espeak_POSITION_TYPE position_type, unsigned int end_position, unsigned int flags, unsigned int* unique_identifier, void* user_data);
 
-__safe foreign handler espeak_Synth( in pOutput as ZStringNative, in pSize as UIntSize, in pPosition as CUInt, in pPositionType as CUInt, in pEndPosition as CUInt, in pFlags as CUInt, in pID as optional CUInt, in pCustDataPtr as optional Pointer ) returns CSInt binds to "c:libespeak>espeak_Synth"
+__safe foreign handler espeak_Synth( in pOutput as ZStringNative, in pSize as UIntSize, in pPosition as CUInt, in pPositionType as CUInt, \
+   in pEndPosition as CUInt, in pFlags as CUInt, in pID as optional CUInt, in pCustDataPtr as optional Pointer ) returns CSInt binds to "c:libespeak>espeak_Synth"
+-- typedef enum { POS_CHARACTER = 1, POS_WORD, POS_SENTENCE } espeak_POSITION_TYPE;
+
+-- __safe foreign handler speakSynthesize( in pStrPtr as ZStringNative, in pSize as CUint, in pPosition as CUInt, in pPositionType as optional any, \
+--   in pEndPosition as CUInt, in pFlags as CUInt, in pID as optional any, in pCustDataPtr as optional any) returns espeak_ERROR binds to "c:libespeak>espeak_Synth"
+
+__safe foreign handler espeak_Key( in pOutput as ZStringNative) returns CSInt binds to "c:libespeak>espeak_Key"
+
+__safe foreign handler espeak_Char( in pOutput as String) returns CSInt binds to "c:libespeak>espeak_Char"
 
 __safe foreign handler espeak_Initialize( in pOutput as ZStringNative, in pBufferLen as CUInt, in pVocDataPath as optional ZStringNative, in pOption as CUInt ) returns CSInt binds to "c:libespeak>espeak_Initialize"
 
--- typedef enum { POS_CHARACTER = 1, POS_WORD, POS_SENTENCE } espeak_POSITION_TYPE;
+-- __safe foreign handler espeak_Info(out rPathStrPtr as optional Pointer) returns Pointer binds to "c:libespeak>espeak_Info"
+__safe foreign handler espeak_Info(out rPathStrPtr as Pointer) returns Pointer binds to "c:libespeak>espeak_Info"
 
-__safe foreign handler speakSynthesize( in pStrPtr as optional Pointer, in pSize as UIntSize,in pPosition as CUInt, in pPositionType as optional any, \
-   in pEndPosition as CUInt, in pFlags as CUInt int flags, in pPosition as optional any, in pPosition as optional CUInt) returns espeak_ERROR binds to ""
-
-__safe foreign handler espeak_Info(inout rPathStrPtr as optional Pointer) returns Pointer binds to "c:libespeak>espeak_Info"
 
 -- ESPEAK_API int espeak_Initialize(espeak_AUDIO_OUTPUT output, int buflength, const char *path, int options);
 
@@ -202,6 +217,24 @@ __safe foreign handler MCMemoryReallocate(in rBlockPtr as Pointer, in pSize as U
 __safe foreign handler MCMemoryDeallocate(in rBlockPtr as Pointer) returns nothing binds to "<builtin>"
 __safe foreign handler MCWidgetGetMyScriptObject(out rObject as ScriptObject) returns nothing binds to "<builtin>"
 
+private type espeak_VOICE_ptr is Pointer
+public foreign type espeak_VOICE_stuct binds to "MCAggregateTypeInfo:rrrcccccr"
+-- public foreign type myType binds to "MCAggregateTypeInfo:rrrhhhhhr"
+-- r= Pointer k= UInt64  i= UInt16 h= UInt8
+foreign handler PointerToESpeakVoiceRecord(out rAggregate as espeak_VOICE_stuct, in pPointer as Pointer, in pSize as UIntSize) returns nothing binds to "c:memcpy"
+/*
+// voice table struct:
+	const char *name;      // a given name for this voice. UTF8 string. --- Char Pointer
+	const char *languages;       // list of pairs of (byte) priority + (string) language (and dialect qualifier) -- Char Pointer
+	const char *identifier;      // the filename for this voice within espeak-data/voices -- Char Pointer
+	unsigned char gender;  // 0=none 1=male, 2=female, -- CUInt
+	unsigned char age;     // 0=not specified, or age in years -- CUInt
+	unsigned char variant; // only used when passed as a parameter to espeak_SetVoiceByProperties -- CUInt
+	unsigned char xx1;     // for internal use -- CUInt
+	int score;       // for internal use -- CUInt
+	void *spare;     // for internal use -- Null/Pointer
+} espeak_VOICE;
+*/
 
 /**
 Setup the eSpeak Engine
@@ -223,22 +256,29 @@ public handler speakEnsureInit() returns optional any
    variable tOptions as CUInt
    variable tBufferLen as CUInt
 
-   variable tPathStrPtr as optional Pointer
-   variable tPathString as ZStringNative
+   variable tPathStrPtr as Pointer
+   variable tPathString as String
    variable tSize as CUInt
+      -- buflength:  The length in mS of sound buffers passed to the SynthCallback function.
+      -- Value=0 gives a default of 200mS. This paramater is only used for AUDIO_OUTPUT_RETRIEVAL and AUDIO_OUTPUT_SYNCHRONOUS modes.
+      put 0 into tBufferLen
+      -- options: bit 0:  1=allow espeakEVENT_PHONEME events. bit 1:  1= espeakEVENT_PHONEME events give IPA phoneme names, not eSpeak phoneme names. bit 15: 1=don't exit if espeak_data is not found (used for --help)
+      put 1 into tOptions
+      put espeak_Initialize("AUDIO_OUTPUT_PLAYBACK",tBufferLen,nothing,tOptions) into tWasSet
+      log ["Failed or Sample Rate:", tWasSet] -- logs 22050, which is KHz sample rate
 
-	--if mInited then
-	--	return mInited
-   --	else
+      --	return mInited
+      --	else
       -- ESPEAK_API const char *espeak_Info(const char **path_data);
       /* Returns the version number string.
          path_data  returns the path to espeak_data
       */
       -- #endif
-      put "" into tPathString
-      put nothing into tPathStrPtr
+      -- put "" into tPathString
+      -- put nothing into tPathStrPtr
       put espeak_Info(tPathStrPtr) into tStrPtr
-      log tPathString
+      -- log ["tStrPtr", tStrPtr]
+      --log ["tPathStrPtr", tPathStrPtr]
       if MCStringCreateWithCString(tStrPtr, tString) then
          log ["lib eSpeak version:" && tString]
       end if
@@ -246,17 +286,29 @@ public handler speakEnsureInit() returns optional any
          log ["lib eSpeak voice data path:" && tPathString]
       end if
 
-      -- buflength:  The length in mS of sound buffers passed to the SynthCallback function.  Value=0 gives a default of 200mS. This paramater is only used for AUDIO_OUTPUT_RETRIEVAL and AUDIO_OUTPUT_SYNCHRONOUS modes.
-      put 0 into tBufferLen
-      -- options: bit 0:  1=allow espeakEVENT_PHONEME events. bit 1:  1= espeakEVENT_PHONEME events give IPA phoneme names, not eSpeak phoneme names. bit 15: 1=don't exit if espeak_data is not found (used for --help)
-      put 1 into tOptions
-      put espeak_Initialize("AUDIO_OUTPUT_PLAYBACK",tBufferLen,nothing,tOptions) into tWasSet
-      log tWasSet -- logs 22050, which is KHz sample rate
+   variable tESpeakVOICEptr as optional espeak_VOICE_ptr
+      put espeak_GetCurrentVoice(nothing) into tESpeakVOICEptr
+      log tESpeakVOICEptr
+      variable tVoiceRecord as optional espeak_VOICE_stuct
+      -- put the empty list into tVoiceRecord
+      unsafe
+         PointerToESpeakVoiceRecord(tVoiceRecord,tESpeakVOICEptr,32)
+      end unsafe
+      log [tVoiceRecord]
+       -- if MCStringCreateWithCString(element 4 of tVoiceRecord, tString) then
+       --log ["Element:" && tString]
+       -- end if
+      --if MCStringCreateWithCString(element 3 of tVoiceRecord, tString) then
+      --   log ["Element 3:" && tString]
+      --end if
       put "Hello eSpeak!" into tString
       put 14 into tSize
       -- POS_CHARACTER = 1, POS_WORD, POS_SENTENCE
       -- put espeakCHARS_AUTO = 0 + espeakENDPAUSE = 4096 into tFlags
-      put espeak_Synth(tString,tSize,0,1,0,4096,nothing,nothing) into tWasSet -- crashes engine
+      -- put espeak_Synth(tString,tSize,0,1,0,4096,nothing,nothing) into tWasSet -- crashes engine
+      -- put speakSynthesize(tString,tSize,0,1,0,1,nothing,nothing) into tWasSet -- crashes engine
+      -- put espeak_Char("A") into tWasSet
+      -- espeak_ERROR espeak_Key(const char *key_name);
       -- log tWasSet
 end handler
 
